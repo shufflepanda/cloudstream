@@ -54,7 +54,7 @@ class MacIptvSettingsFragment(private val plugin: Plugin, val maciptvAPI: MacIpt
         val infoSubTextView = view.findView<TextView>("info_sub_text")
         val infoImageView = view.findView<ImageView>("nginx_info_imageview")
 
-        infoTextView.text = getString("nginx_info_title") ?: "Nginx"
+        infoTextView.text = getString("nginx_info_title") ?: "MacIPTV"
         infoSubTextView.text = getString("nginx_info_summary") ?: ""
         infoImageView.setImageDrawable(getDrawable("nginx_question"))
         infoImageView.imageTintList =
