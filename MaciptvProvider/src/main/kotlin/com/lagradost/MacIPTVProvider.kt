@@ -8,103 +8,6 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.nicehttp.NiceResponse
 import kotlinx.coroutines.runBlocking
 import me.xdrop.fuzzywuzzy.FuzzySearch
-import com.lagradost.MacIPTVProvider.Companion.toHomePageList
-
-
-fun findKeyWord(str: String): Regex {
-    val upperSTR = str.uppercase()
-    val sequence = when (true) {
-        upperSTR == "EN" -> {
-            "US|UK"
-        }
-        else -> upperSTR
-    }
-    return """(?:^|\W+|\s)+($sequence)(?:\s|\W+|${'$'}|\|)+""".toRegex()
-}
-
-fun cleanTitleButKeepNumber(title: String): String {
-    return title.uppercase().replace("""FHD""", "")
-        .replace(findKeyWord("VIP"), "")
-        .replace("""UHD""", "").replace("""HEVC""", "")
-        .replace("""HDR""", "").replace("""SD""", "").replace("""4K""", "")
-        .replace("""HD""", "")
-}
-
-fun cleanTitle(title: String): String {
-    return cleanTitleButKeepNumber(title).replace(
-        """(\s\d{1,}${'$'}|\s\d{1,}\s)""".toRegex(),
-        " "
-    )
-}
-
-fun getFlag(sequence: String): String {
-    val FR = findKeyWord("FR|FRANCE|FRENCH")
-    val US = findKeyWord("US|USA")
-    val AR = findKeyWord("AR|ARAB|ARABIC|ARABIA")
-    val UK = findKeyWord("UK")
-    val flag: String
-    flag = when (true) {
-        sequence.uppercase()
-            .contains(FR) -> "\uD83C\uDDE8\uD83C\uDDF5"
-        sequence.uppercase()
-            .contains(US) -> "\uD83C\uDDFA\uD83C\uDDF8"
-        sequence.uppercase()
-            .contains(UK) -> "\uD83C\uDDEC\uD83C\uDDE7"
-        sequence.uppercase()
-            .contains(AR) -> " نظرة"
-        else -> ""
-    }
-    return flag
-}
-
-data class Channel(
-    var title: String,
-    var url: String,
-    val url_image: String?,
-    val lang: String?,
-    var id: String?,
-    var tv_genre_id: String?,
-    var ch_id: String?,
-)
-
-fun toSearchResponseHomePage(
-    channels: List<Channel>,
-    provider: MacIPTVProvider, GenreId: String
-): List<SearchResponse> {
-    val groupChannel = ArrayList<String>()
-    var b_new: String
-    var newgroupChannel: Boolean
-    val home = channels.mapNotNull { media ->
-        val groupName = cleanTitle(media.title).replace(provider.rgxcodeCountry, "").trim()
-
-        val rgxcodeCountry = provider.rgxcodeCountry
-        val b = cleanTitle(media.title).replace(rgxcodeCountry, "").trim()
-        b_new = b.take(6)
-        newgroupChannel = true
-        for (nameChannel in groupChannel) {
-            if (nameChannel.contains(b_new) && media.tv_genre_id == GenreId) {
-                newgroupChannel = false
-                break
-            }
-        }
-        if (newgroupChannel && media.tv_genre_id == GenreId) {
-            groupChannel.add(b_new)
-
-            LiveSearchResponse(
-                groupName,
-                "$provider.mainUrl/-${media.id}-",
-                provider.name,
-                TvType.Live,
-                media.url_image,
-            )
-
-
-        } else {
-            null
-        }
-    }
-    return home
-}
 
 class MacIPTVProvider(override var lang: String) : MainAPI() {
     private val defaulmac_adresse =
@@ -112,7 +15,7 @@ class MacIPTVProvider(override var lang: String) : MainAPI() {
     private val defaultmainUrl =
         "http://ky-iptv.com:25461/portalstb"
     var defaultname = "ky-iptv |${lang.uppercase()}|"
-    override var name = "Box Iptv |${lang.uppercase()}|"
+    override var name = "Box Iptv"
     override val hasQuickSearch = false
     override val hasMainPage = true
     override val supportedTypes =
@@ -121,15 +24,9 @@ class MacIPTVProvider(override var lang: String) : MainAPI() {
     private var firstInitDone = false
     private var key: String? = ""
 
-    companion object {
-        var companionName: String? = null
-        var loginMac: String? = null
-        var overrideUrl: String? = null
-        fun List<Channel>.toHomePageList(name: String, provider: MacIPTVProvider, GenreId: String) =
-            HomePageList(
-                name, toSearchResponseHomePage(this, provider, GenreId),
-                isHorizontalImages = true
-            )
+
+    private fun detectNewAccount(): Boolean {
+        return oldAthMac != loginMac || oldAthUrl != overrideUrl
     }
 
     private fun accountInfoNotGood(url: String, mac: String?): Boolean {
@@ -137,56 +34,78 @@ class MacIPTVProvider(override var lang: String) : MainAPI() {
             ?.trim() == "NONE" || mac.isNullOrBlank()
     }
 
-    private suspend fun getAuthHeader(): Map<String, String> {
+    private suspend fun getkey(mac: String) {
+        val adresseMac = if (!mac.contains("mac=")) {
+            "mac=$mac"
+        } else {
+            mac
+        }
+        val url_key =
+            "$mainUrl/portal.php?type=stb&action=handshake&JsHttpRequest=1-xml"
+        val reponseGetkey = app.get(
+            url_key, headers = mapOf(
+                "Cookie" to adresseMac,
+                "User-Agent" to "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3",
+            )
+        )
+        val keyJson = reponseGetkey.parsed<Getkey>()
+        key = keyJson.js?.token
+    }
 
-        mainUrl = overrideUrl.toString()
+
+    init {
         name = (companionName ?: name) + " |${lang.uppercase()}|"
-        val localCredentials = loginMac
-        when (true) {
-            accountInfoNotGood(mainUrl, localCredentials) -> {
+    }
+
+    private suspend fun getAuthHeader() {
+        oldAthMac = loginMac
+        oldAthUrl = overrideUrl
+        mainUrl = overrideUrl.toString()
+        headerMac = when (true) {
+            accountInfoNotGood(mainUrl, loginMac) -> {
                 mainUrl = defaultmainUrl
                 name = defaultname
                 if (!firstInitDone) {
-                    val url_key =
-                        "$mainUrl/portal.php?type=stb&action=handshake&JsHttpRequest=1-xml"
-                    val reponseGetkey = app.get(
-                        url_key, headers = mapOf(
-                            "Cookie" to defaulmac_adresse,
-                            "User-Agent" to "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3",
-                        )
-                    )
-                    val keyJson = reponseGetkey.parsed<Getkey>()
-                    key = keyJson.js?.token
+                    getkey(defaulmac_adresse)
+                    firstInitDone = true
                 }
-                firstInitDone = true
-                return mapOf(
+
+                mutableMapOf(
                     "Cookie" to defaulmac_adresse,
                     "User-Agent" to "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3",
                     "Authorization" to "Bearer $key",
                 )
             }
             else -> {
+                name = (companionName ?: name) + " |${lang.uppercase()}|"
                 if (!firstInitDone) {
-                    val url_key =
-                        "$mainUrl/portal.php?type=stb&action=handshake&JsHttpRequest=1-xml"
-                    val reponseGetkey = app.get(
-                        url_key, headers = mapOf(
-                            "Cookie" to "mac=$localCredentials",
-                            "User-Agent" to "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3",
-                        )
-                    )
-                    val keyJson = reponseGetkey.parsed<Getkey>()
-                    key = keyJson.js?.token
+                    getkey(loginMac.toString())
+                    firstInitDone = true
                 }
-                firstInitDone = true
-                return mapOf(
-                    "Cookie" to "mac=$localCredentials",
+
+                mutableMapOf(
+                    "Cookie" to "mac=$loginMac",
                     "User-Agent" to "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3",
                     "Authorization" to "Bearer $key",
                 )
             }
         }
 
+    }
+
+
+    data class Channel(
+        var title: String,
+        var url: String,
+        val url_image: String?,
+        val lang: String?,
+        var id: String?,
+        var tv_genre_id: String?,
+        var ch_id: String?,
+    ) {
+        fun toStringCode(): String {
+            return "${this.title}*${this.url}*${this.url_image}*${this.lang}*${this.id}*${this.tv_genre_id}*${this.ch_id}"
+        }
     }
 
 
@@ -255,82 +174,80 @@ class MacIPTVProvider(override var lang: String) : MainAPI() {
         return description
     }
 
+    fun String.getDataChannelFromString(): Channel {
+        val res = this.split("*")
+
+        return Channel(res[0], res[1], res[2], res[3], res[4], res[5], res[6])
+    }
+
 
     override suspend fun load(url: String): LoadResponse {
-
-        var link = url
-        var title = "Your channel"
-        var posterUrl = ""
-        var description = "The program for this channel was not found"
         val allresultshome: MutableList<SearchResponse> = mutableListOf()
-        val headerIPTV = getAuthHeader()
-        for (media in arraymediaPlaylist) {
-            val keyId = "/-${media.id}-"
-            if (url.contains(keyId) || url == media.url) {
-                val epg_url =
-                    "$mainUrl/portal.php?type=itv&action=get_short_epg&ch_id=${media.ch_id}&size=10&JsHttpRequest=1-xml" // plot
-                val response = app.get(epg_url, headers = headerIPTV)
-                description = getEpg(response.text)
-                link = media.url
-                title = media.title
-                val a = cleanTitle(title).replace(rgxcodeCountry, "").trim()
-                posterUrl = media.url_image.toString()
-                var b_new: String
-                arraymediaPlaylist.forEach { channel ->
-                    val b = cleanTitle(channel.title).replace(rgxcodeCountry, "").trim()
-                    b_new = b.take(6)
-                    if (channel.id != media.id && a.take(6)
-                            .contains(b_new) && media.tv_genre_id == channel.tv_genre_id
-                    ) {
-                        val streamurl = channel.url
-                        val channelname = channel.title
-                        val posterurl = channel.url_image.toString()
-                        val uppername = channelname.uppercase()
-                        val quality = getQualityFromString(
-                            when (!channelname.isNullOrBlank()) {
-                                uppername.contains(findKeyWord("UHD")) -> {
-                                    "UHD"
-                                }
-                                uppername.contains(findKeyWord("HD")) -> {
-                                    "HD"
-                                }
-                                uppername.contains(findKeyWord("SD")) -> {
-                                    "SD"
-                                }
-                                uppername.contains(findKeyWord("FHD")) -> {
-                                    "HD"
-                                }
-                                uppername.contains(findKeyWord("4K")) -> {
-                                    "FourK"
-                                }
+        val media = url.replace(mainUrl, "").getDataChannelFromString()
+        val epg_url =
+            "$mainUrl/portal.php?type=itv&action=get_short_epg&ch_id=${media.ch_id}&size=10&JsHttpRequest=1-xml" // plot
+        val response = app.get(epg_url, headers = headerMac)
+        val description = getEpg(response.text)
+        val link = media.url
+        val title = media.title
+        val a = cleanTitle(title).replace(rgxcodeCountry, "").trim()
+        val posterUrl = media.url_image.toString()
+        var b_new: String
+        arraymediaPlaylist.forEach { channel ->
+            val b = cleanTitle(channel.title).replace(rgxcodeCountry, "").trim()
+            b_new = b.take(6)
+            if (channel.id != media.id && a.take(6)
+                    .contains(b_new) && media.tv_genre_id == channel.tv_genre_id
+            ) {
 
-                                else -> {
-                                    null
-                                }
-                            }
-                        )
-                        allresultshome.add(
-                            LiveSearchResponse(
-                                name = cleanTitleButKeepNumber(channelname).replace(
-                                    rgxcodeCountry,
-                                    ""
-                                ).trim(),
-                                url = streamurl,
-                                name,
-                                TvType.Live,
-                                posterUrl = posterurl,
-                                quality = quality,
-                            )
-                        )
+                val streamurl = channel.toStringCode()
+                val channelname = channel.title
+                val posterurl = channel.url_image.toString()
+                val uppername = channelname.uppercase()
+                val quality = getQualityFromString(
+                    when (!channelname.isNullOrBlank()) {
+                        uppername.contains(findKeyWord("UHD")) -> {
+                            "UHD"
+                        }
+                        uppername.contains(findKeyWord("HD")) -> {
+                            "HD"
+                        }
+                        uppername.contains(findKeyWord("SD")) -> {
+                            "SD"
+                        }
+                        uppername.contains(findKeyWord("FHD")) -> {
+                            "HD"
+                        }
+                        uppername.contains(findKeyWord("4K")) -> {
+                            "FourK"
+                        }
 
+                        else -> {
+                            null
+                        }
                     }
+                )
+                allresultshome.add(
+                    LiveSearchResponse(
+                        name = cleanTitleButKeepNumber(channelname).replace(
+                            rgxcodeCountry,
+                            ""
+                        ).trim(),
+                        url = streamurl,
+                        name,
+                        TvType.Live,
+                        posterUrl = posterurl,
+                        quality = quality,
+                    )
+                )
 
-                }
 
-                break
             }
 
         }
+
+
+
 
         if (allresultshome.size >= 1) {
             val recommendation = allresultshome
@@ -376,8 +293,7 @@ class MacIPTVProvider(override var lang: String) : MainAPI() {
                     var link: String
                     var lien: String
                     runBlocking {
-                        val headerIPTV = getAuthHeader()
-                        val getTokenLink = app.get(TokenLink, headers = headerIPTV).text
+                        val getTokenLink = app.get(TokenLink, headers = headerMac).text
                         val regexGetLink = Regex("""(http.*)\"\},""")
                         link = regexGetLink.find(getTokenLink)?.groupValues?.get(1).toString()
                             .replace(
@@ -415,10 +331,9 @@ class MacIPTVProvider(override var lang: String) : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ): Boolean {
-        val headerIPTV = getAuthHeader()
         val TokenLink =
             "$mainUrl/portal.php?type=itv&action=create_link&cmd=ffmpeg%20$data&series=&forced_storage=0&disable_ad=0&download=0&force_ch_link_check=0&JsHttpRequest=1-xml"
-        val getTokenLink = app.get(TokenLink, headers = headerIPTV).text
+        val getTokenLink = app.get(TokenLink, headers = headerMac).text
         val regexGetLink = Regex("""(http.*)\"\},""")
         val link =
             regexGetLink.find(getTokenLink)?.groupValues?.get(1).toString().replace("""\""", "")
@@ -516,61 +431,56 @@ class MacIPTVProvider(override var lang: String) : MainAPI() {
 
     private var codeCountry = lang
 
-
     val rgxcodeCountry = findKeyWord(codeCountry)
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        var arrayHomepage = mutableListOf<HomePageList>()
-        if (page == 1) {
-            val headerIPTV = getAuthHeader()
-            val url_info =
-                "$mainUrl/portal.php?type=account_info&action=get_main_info&JsHttpRequest=1-xml"
-            val urlGetGenre =
-                "$mainUrl/portal.php?type=itv&action=get_genres&JsHttpRequest=1-xml"
-            val urlGetallchannels =
-                "$mainUrl/portal.php?type=itv&action=get_all_channels&JsHttpRequest=1-xml"
+        if (!firstInitDone || arraymediaPlaylist.isEmpty() || detectNewAccount()) {
+            if (detectNewAccount()) firstInitDone = false
+            getAuthHeader()
 
             var reponseGetInfo: NiceResponse? = null
             var responseGetgenre: NiceResponse? = null
             var responseAllchannels: NiceResponse? = null
             listOf(
-                url_info,
-                urlGetGenre,
-                urlGetallchannels
+                "$mainUrl/portal.php?type=account_info&action=get_main_info&JsHttpRequest=1-xml",
+                "$mainUrl/portal.php?type=itv&action=get_genres&JsHttpRequest=1-xml",
+                "$mainUrl/portal.php?type=itv&action=get_all_channels&JsHttpRequest=1-xml",
             ).apmap { url ->
-                val response = app.get(url, headers = headerIPTV)
                 when (true) {
+
                     url.contains("action=get_main_info") -> {
-                        reponseGetInfo = response
+                        reponseGetInfo = app.get(url, headers = headerMac)
                     }
                     url.contains("action=get_genre") -> {
-                        responseGetgenre = response
+                        responseGetgenre = app.get(url, headers = headerMac)
                     }
                     url.contains("action=get_all_channels") -> {
-                        responseAllchannels = response
+                        responseAllchannels = app.get(url, headers = headerMac)
                     }
                     else -> {
-                        ""
+                        ErrorLoadingException("url not good")
                     }
                 }
             }
+
             ///////////// GET EXPIRATION
             val infoExpirationJson = reponseGetInfo!!.parsed<GetExpiration>()
-            val expiration = infoExpirationJson.js?.phone.toString()
+            expiration = infoExpirationJson.js?.phone.toString()
             ////////////////////////// GET ALL GENRES
-            val responseGetGenretoJSON = responseGetgenre!!.parsed<JsonGetGenre>()
+            responseGetGenretoJSON = responseGetgenre!!.parsed<JsonGetGenre>().js
             ////////////////////////// GET ALL CHANNELS
             val responseAllchannelstoJSON = responseAllchannels!!.parsed<Root>()
             val AllchannelstoJSON = responseAllchannelstoJSON.js!!.data.sortByTitleNumber()
-            arrayHomepage = HomeResponse(
-                responseGetGenretoJSON,
-                AllchannelstoJSON,
-                expiration,
-            ).getHomePageLists(this)
-        }
 
-        return HomePageResponse(
-            arrayHomepage, false
-        )
+            return HomePageResponse(
+                HomeResponse(
+                    AllchannelstoJSON,
+                ).getHomePageListsInit(this), false
+            )
+        } else {
+            return HomePageResponse(
+                HomeResponse().getHomePageListsFromArrayChannel(this), false
+            )
+        }
     }
 
 
@@ -584,9 +494,7 @@ class MacIPTVProvider(override var lang: String) : MainAPI() {
 
 
     private data class HomeResponse(
-        val genres: JsonGetGenre,
-        val channels: ArrayList<Data>,
-        val expiration: String,
+        val channels: ArrayList<Data> = ArrayList(),
     ) {
         fun String.isContainsTargetCountry(provider: MacIPTVProvider): Boolean {
             val getLang = provider.lang.uppercase()
@@ -615,90 +523,232 @@ class MacIPTVProvider(override var lang: String) : MainAPI() {
                 }
                 else -> resp = false
             }
-
-
-
             return resp
         }
 
 
-        fun getHomePageLists(provider: MacIPTVProvider): ArrayList<HomePageList> {
-            val arrayHomepage = ArrayList<HomePageList>()
+        fun getHomePageListsInit(provider: MacIPTVProvider): List<HomePageList> {
+            val arrayHomepage = mutableListOf<HomePageList>()
             val rgxcodeCountry = provider.rgxcodeCountry
             var firstCat = true
-            genres.js.forEach { js ->
-                val idGenre = js.id
-                val categoryTitle = js.title.toString()
-                val arraychannel = ArrayList<Channel>()
-                if (idGenre!!.contains("""\d""".toRegex()) && (categoryTitle.uppercase()
-                        .contains(rgxcodeCountry) ||
-                            categoryTitle.isContainsTargetCountry(provider)
-                            )
-                ) {
-                    val itr = channels.iterator()
-                    while (itr.hasNext()) {
-                        val data = itr.next()
-                        val genre = data.tvGenreId
-                        if (genre != null) {
-                            if (genre == idGenre) {
-                                itr.remove()
-                                val name = data.name.toString()
-                                val tv_genre_id = data.tvGenreId
-                                val idCH = data.id
-                                val link = "http://localhost/ch/$idCH" + "_"
-                                val logo = data.logo?.replace("""\""", "")
-                                val ch_id = data.cmds[0].chId
-                                arraychannel.add(
-                                    Channel(
-                                        name,
-                                        link,
-                                        logo,
-                                        "",
-                                        idCH,
-                                        tv_genre_id,
-                                        ch_id
-                                    )
+            if (responseGetGenretoJSON.isNotEmpty() && channels.isNotEmpty()) {
+                responseGetGenretoJSON.forEach { js ->
+                    val idGenre = js.id
+                    val categoryTitle = js.title.toString()
+                    val arraychannel = ArrayList<Channel>()
+                    if (idGenre!!.contains("""\d""".toRegex()) && (categoryTitle.uppercase()
+                            .contains(rgxcodeCountry) ||
+                                categoryTitle.isContainsTargetCountry(provider)
                                 )
-                                provider.arraymediaPlaylist.add(
-                                    Channel(
-                                        name,
-                                        link,
-                                        logo,
-                                        "",
-                                        idCH,
-                                        tv_genre_id,
-                                        ch_id
+                    ) {
+                        val itr = channels.iterator()
+                        while (itr.hasNext()) {
+                            val data = itr.next()
+                            val genre = data.tvGenreId
+                            if (genre != null) {
+                                if (genre == idGenre) {
+                                    itr.remove()
+                                    val name = data.name.toString()
+                                    val tv_genre_id = data.tvGenreId
+                                    val idCH = data.id
+                                    val link = "http://localhost/ch/$idCH" + "_"
+                                    val logo = data.logo?.replace("""\""", "")
+                                    val ch_id = data.cmds[0].chId
+                                    arraychannel.add(
+                                        Channel(
+                                            name,
+                                            link,
+                                            logo,
+                                            "",
+                                            idCH,
+                                            tv_genre_id,
+                                            ch_id
+                                        )
                                     )
-
-                                )
+                                    provider.arraymediaPlaylist.add(
+                                        Channel(
+                                            name,
+                                            link,
+                                            logo,
+                                            "",
+                                            idCH,
+                                            tv_genre_id,
+                                            ch_id
+                                        )
+                                    )
+                                }
                             }
                         }
                     }
-                }
-                /***************************************** */
-                val flag: String
-                if (categoryTitle.uppercase()
-                        .contains(rgxcodeCountry) || categoryTitle.isContainsTargetCountry(
-                        provider
-                    )
-                ) {
-                    flag = getFlag(categoryTitle)
-                    val nameGenre = if (firstCat) {
-                        firstCat = false
-                        "$flag ${
-                            cleanTitle(categoryTitle).replace(rgxcodeCountry, "").trim()
-                        } \uD83D\uDCFA ${provider.name} \uD83D\uDCFA (⏳ $expiration)"
-                    } else {
-                        "$flag ${cleanTitle(categoryTitle).replace(rgxcodeCountry, "").trim()}"
+                    /***************************************** */
+                    val flag: String
+                    if (categoryTitle.uppercase()
+                            .contains(rgxcodeCountry) || categoryTitle.isContainsTargetCountry(
+                            provider
+                        )
+                    ) {
+                        flag = getFlag(categoryTitle)
+                        val nameGenre = if (firstCat) {
+                            firstCat = false
+                            "$flag ${
+                                cleanTitle(categoryTitle).replace(rgxcodeCountry, "").trim()
+                            } \uD83D\uDCFA ${provider.name} \uD83D\uDCFA (⏳ $expiration)"
+                        } else {
+                            "$flag ${cleanTitle(categoryTitle).replace(rgxcodeCountry, "").trim()}"
+                        }
+                        arrayHomepage.add(
+                            arraychannel.toHomePageList(nameGenre, provider, idGenre)
+                        )
                     }
-                    arrayHomepage.add(
-                        arraychannel.toHomePageList(nameGenre, provider, idGenre)
-                    )
                 }
-
             }
+
             return arrayHomepage
         }
+
+        fun getHomePageListsFromArrayChannel(provider: MacIPTVProvider): List<HomePageList> {
+            val arrayHomepage = mutableListOf<HomePageList>()
+            val rgxcodeCountry = provider.rgxcodeCountry
+            var firstCat = true
+            val mychannels = ArrayList(provider.arraymediaPlaylist)
+            if (responseGetGenretoJSON.isNotEmpty() && provider.arraymediaPlaylist.isNotEmpty()) {
+                responseGetGenretoJSON.forEach { js ->
+                    val idGenre = js.id.toString()
+                    val categoryTitle = js.title.toString()
+
+                    /***************************************** */
+                    val flag: String
+                    if (categoryTitle.uppercase()
+                            .contains(rgxcodeCountry) || categoryTitle.isContainsTargetCountry(
+                            provider
+                        )
+                    ) {
+                        flag = getFlag(categoryTitle)
+                        val nameGenre = if (firstCat) {
+                            firstCat = false
+                            "$flag ${
+                                cleanTitle(categoryTitle).replace(rgxcodeCountry, "").trim()
+                            } \uD83D\uDCFA ${provider.name} \uD83D\uDCFA (⏳ $expiration)"
+                        } else {
+                            "$flag ${cleanTitle(categoryTitle).replace(rgxcodeCountry, "").trim()}"
+                        }
+                        arrayHomepage.add(
+                            mychannels.toHomePageList(nameGenre, provider, idGenre)
+                        )
+                    }
+                }
+            }
+
+            return arrayHomepage
+        }
+
     }
 
+    companion object {
+        var companionName: String? = null
+        var loginMac: String? = null
+        var overrideUrl: String? = null
+        private var oldAthMac: String? = null
+        private var oldAthUrl: String? = null
+        private var headerMac = mutableMapOf<String, String>()
+        var expiration: String? = null
+        var responseGetGenretoJSON = ArrayList<Js_category>() // all genres from the provider
+        fun findKeyWord(str: String): Regex {
+            val upperSTR = str.uppercase()
+            val sequence = when (true) {
+                upperSTR == "EN" -> {
+                    "US|UK"
+                }
+                else -> upperSTR
+            }
+            return """(?:^|\W+|\s)+($sequence)(?:\s|\W+|${'$'}|\|)+""".toRegex()
+        }
+
+        fun cleanTitleButKeepNumber(title: String): String {
+            return title.uppercase().replace("""FHD""", "")
+                .replace(findKeyWord("VIP"), "")
+                .replace("""UHD""", "").replace("""HEVC""", "")
+                .replace("""HDR""", "").replace("""SD""", "").replace("""4K""", "")
+                .replace("""HD""", "")
+        }
+
+        fun getFlag(sequence: String): String {
+            val FR = findKeyWord("FR|FRANCE|FRENCH")
+            val US = findKeyWord("US|USA")
+            val AR = findKeyWord("AR|ARAB|ARABIC|ARABIA")
+            val UK = findKeyWord("UK")
+            val flag: String
+            flag = when (true) {
+                sequence.uppercase()
+                    .contains(FR) -> "\uD83C\uDDE8\uD83C\uDDF5"
+                sequence.uppercase()
+                    .contains(US) -> "\uD83C\uDDFA\uD83C\uDDF8"
+                sequence.uppercase()
+                    .contains(UK) -> "\uD83C\uDDEC\uD83C\uDDE7"
+                sequence.uppercase()
+                    .contains(AR) -> " نظرة"
+                else -> ""
+            }
+            return flag
+        }
+
+        fun cleanTitle(title: String): String {
+            return cleanTitleButKeepNumber(title).replace(
+                """(\s\d{1,}${'$'}|\s\d{1,}\s)""".toRegex(),
+                " "
+            )
+        }
+
+        fun ArrayList<Channel>.toSearchResponseHomePage(
+            provider: MacIPTVProvider, GenreId: String
+        ): List<SearchResponse> {
+            val groupChannel = ArrayList<String>()
+            var b_new: String
+            var newgroupChannel: Boolean
+            val rgxcodeCountry = provider.rgxcodeCountry
+            val home = ArrayList<SearchResponse>()
+            val itr = this.iterator()
+            while (itr.hasNext()) {
+                val media = itr.next()
+                val b = cleanTitle(media.title).replace(rgxcodeCountry, "").trim()
+                b_new = b.take(6)
+                newgroupChannel = true
+                for (nameChannel in groupChannel) {
+                    if (nameChannel.contains(b_new) && media.tv_genre_id == GenreId) {
+                        newgroupChannel = false
+                        break
+                    }
+                }
+                if (newgroupChannel && media.tv_genre_id == GenreId) {
+                    groupChannel.add(b_new)
+                    val groupName = cleanTitle(media.title).replace(rgxcodeCountry, "").trim()
+                    itr.remove()
+                    home.add(
+                        LiveSearchResponse(
+                            groupName,
+                            "${provider.mainUrl}${media.toStringCode()}",
+                            provider.name,
+                            TvType.Live,
+                            media.url_image,
+                        )
+                    )
+
+
+                }
+            }
+
+            return home
+        }
+
+        fun ArrayList<Channel>.toHomePageList(
+            name: String,
+            provider: MacIPTVProvider,
+            GenreId: String
+        ) =
+            HomePageList(
+                name, this.toSearchResponseHomePage(provider, GenreId),
+                isHorizontalImages = true
+            )
+
+    }
 }
