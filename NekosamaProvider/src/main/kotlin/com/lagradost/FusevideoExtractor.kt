@@ -26,7 +26,7 @@ open class FusevideoExtractor : ExtractorApi() {
             app.get(scriptsourceUrl, headers = headers).document//** Open the scritp function  **/
 
         val base64CodeRegex =
-            Regex("""e\.parseJSON\(atob\(t\)\.slice\(2\)\)\}\(\"(.*)\=\="\)\,n\=\"""")  //** Search the code64 **/
+            Regex("""\(n=atob\(\"(.*),o\="""")  //** Search the code64 **/
         val code64 = base64CodeRegex.find(Scripdocument.toString())?.groupValues?.get(1)
 
         val decoded = code64?.decodeBase64()?.utf8() //** decode the code64 **/
