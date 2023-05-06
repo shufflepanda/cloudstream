@@ -42,8 +42,8 @@ open class FusevideoExtractor : ExtractorApi() {
                 m3u8,
                 refer, // voir si site demande le referer à mettre ici
                 Qualities.Unknown.value,
-                true,
-                headers = headers
+                true
+               // headers = headers
 
             )
         )
