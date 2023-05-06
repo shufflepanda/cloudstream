@@ -19,14 +19,14 @@ open class FusevideoExtractor : ExtractorApi() {
         val document = app.get(url, headers = headers).document
 
         val scriptsourceUrl =
-            document.select("""script[src^="ttps://fusevideo.net/f/u/u/u/u?"]""")
+            document.select("""script[src^="ttps://fusevideo.net/f/u/"]""")
                 .attr("src")//** Get the url where the scritp function is **/
 
         val Scripdocument =
             app.get(scriptsourceUrl, headers = headers).document//** Open the scritp function  **/
 
         val base64CodeRegex =
-            Regex("""\(n=atob\(\"(.*),o\="""")  //** Search the code64 **/
+            Regex("""\(n\=atob\(\"(.*),o\="""")  //** Search the code64 **/
         val code64 = base64CodeRegex.find(Scripdocument.toString())?.groupValues?.get(1)
 
         val decoded = code64?.decodeBase64()?.utf8() //** decode the code64 **/
