@@ -432,12 +432,12 @@ class AnimeSamaProvider : MainAPI() {
         }
         return url
     }
-
+    val regexGetSaison = Regex("""panneauAnime\((.*)\)""")
+    //regexGetSaison.findAll(
     override suspend fun load(url: String): LoadResponse {
         var targetUrl = url
         if (url.contains("*")) {
-            val (link, _) = app.get(url.replace("*", "")).document.select("div.flex.flex-wrap.overflow-y-hidden > script")
-                .tryTofindLatestSeason()
+            val (link, _) = app.get(url.replace("*", "")).document.select("div.flex.flex-wrap.overflow-y-hidden > script").tryTofindLatestSeason()
             targetUrl = link.toString()
 
         }
