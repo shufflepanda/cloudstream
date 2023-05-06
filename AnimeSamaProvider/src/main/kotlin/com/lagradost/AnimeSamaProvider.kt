@@ -644,7 +644,7 @@ class AnimeSamaProvider : MainAPI() {
 
             return newAnimeSearchResponse(
                 title,
-                "$global_link*",
+                global_link,
                 tv_type,
                 false,
             ) {
