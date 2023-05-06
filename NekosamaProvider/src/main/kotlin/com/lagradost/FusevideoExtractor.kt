@@ -16,7 +16,7 @@ open class FusevideoExtractor : ExtractorApi() {
             "Accept" to "*/*",
             "Accept-Language" to "en-US,en;q=0.5",
         )
-        val document = app.get(url, headers = headers).document
+        val document = app.get(url).document
 
         val scriptsourceUrl =
             document.select("""script[src^="ttps://fusevideo.net/f/u/"]""")
