@@ -436,7 +436,7 @@ class AnimeSamaProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         var targetUrl = url
         if (url.contains("*")) {
-            val (link, _) = app.get(url.replace("*", "")).document.select("div.synsaisons > li")
+            val (link, _) = app.get(url.replace("*", "")).document.select("div.flex.flex-wrap.overflow-y-hidden > script")
                 .tryTofindLatestSeason()
             targetUrl = link.toString()
 
