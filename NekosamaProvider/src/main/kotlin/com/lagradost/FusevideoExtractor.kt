@@ -19,7 +19,7 @@ open class FusevideoExtractor : ExtractorApi() {
         val document = app.get(url, headers = headers).document
 
         val scriptsourceUrl =
-            document.select("""script[src^="https://fusevideo.net/u/player-script?"]""")
+            document.select("""script[src^="ttps://fusevideo.net/f/u/u/u/u?"]""")
                 .attr("src")//** Get the url where the scritp function is **/
 
         val Scripdocument =
