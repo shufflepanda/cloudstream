@@ -16,17 +16,15 @@ open class FusevideoExtractor : ExtractorApi() {
             "Accept" to "*/*",
             "Accept-Language" to "en-US,en;q=0.5",
         )
-        val document = app.get(url).document
-
+        val document = app.get(url,headers=headers).document
         val scriptsourceUrl =
-            document.select("""script[src^="ttps://fusevideo.net/f/u/"]""")
+            document.select("""script[src^="https://fusevideo.net/f/u/"]""")
                 .attr("src")//** Get the url where the scritp function is **/
 
         val Scripdocument =
             app.get(scriptsourceUrl, headers = headers).document//** Open the scritp function  **/
-
         val base64CodeRegex =
-            Regex("""\(n\=atob\(\"(.*),o\="""")  //** Search the code64 **/
+            Regex("""\(n\=atob\(\"(.*)\"\),t\=""")  //** Search the code64 **/
         val code64 = base64CodeRegex.find(Scripdocument.toString())?.groupValues?.get(1)
 
         val decoded = code64?.decodeBase64()?.utf8() //** decode the code64 **/
@@ -42,8 +40,8 @@ open class FusevideoExtractor : ExtractorApi() {
                 m3u8,
                 refer, // voir si site demande le referer à mettre ici
                 Qualities.Unknown.value,
-                true
-               // headers = headers
+                true,
+                 headers = headers
 
             )
         )
