@@ -8,6 +8,7 @@ import com.lagradost.nicehttp.NiceResponse
 import org.jsoup.nodes.Element
 import org.jsoup.select.Elements
 import java.util.*
+import kotlin.collections.ArrayList
 
 
 class AnimeSamaProvider : MainAPI() {
@@ -27,10 +28,10 @@ class AnimeSamaProvider : MainAPI() {
      **/
     override suspend fun search(query: String): List<SearchResponse> {
         val allresultshome: MutableList<SearchResponse> = mutableListOf()
-        val link = "$mainUrl/search/search.php?terme=$query&s=Search" // search'
+        val link = "$mainUrl/template-php/defaut/fetch.php" // search'
         val document =
-            app.get(link).document // app.get() permet de télécharger la page html avec une requete HTTP (get)
-        val results = document.select("div.search_text > div.bd-highlight")
+            app.post(link,data = mapOf("query" to query)).document // app.get() permet de télécharger la page html avec une requete HTTP (get)
+        val results = document.select("a")
         results.apmap { article ->  // avec mapnotnull si un élément est null, il sera automatiquement enlevé de la liste
             allresultshome.toSearchResponse1(article)
         }
@@ -94,13 +95,27 @@ class AnimeSamaProvider : MainAPI() {
     }
 
     private suspend fun MutableList<SearchResponse>.toSearchResponse1(element: Element) {
-        val figcaption = element.select(" div.media-body > div >a > h5").text()
-        if (!figcaption.lowercase().trim().contains("scan")) {
-            val posterUrl = element.select("div.bd-highlight >div >a>img ").attr("src")
-            val link_to_anime = element.select("div >a").attr("href")
+       /* val figcaption = element.select(" div.media-body > div >a > h5").text()
+        if (!figcaption.lowercase().trim().contains("scan")) {*/
+            val posterUrl = element.select("a>img ").attr("src")
+            val link_to_anime = element.select("a").attr("href")
             val document = app.get(link_to_anime).document
-            val all_anime = document.select("div.synsaisons > li")
-            all_anime.forEach { saga -> this.add(saga.toSearchResponseAll(posterUrl)) }
+            val all_anime = document.select("div.flex.flex-wrap > script")
+            //all_anime.forEach { saga -> this.add(saga.toSearchResponseAll(posterUrl)) }
+        allAnime.findAll(all_anime.toString()).forEach {
+            val text = it.groupValues[1]
+            if(!text.contains("nom\",") ){
+            val link = link_to_anime + text.split(",")[1].replace("\"", "").trim()
+
+            this.add(newAnimeSearchResponse(
+                text.split(",")[0].replace("\"", "").trim(),
+                link,
+                TvType.Anime,
+                false,
+            ) {
+                this.posterUrl = posterUrl
+            }
+            )}
         }
 
     }
@@ -432,13 +447,18 @@ class AnimeSamaProvider : MainAPI() {
         }
         return url
     }
-    val regexGetSaison = Regex("""panneauAnime\((.*)\)""")
-    //regexGetSaison.findAll(
+
     override suspend fun load(url: String): LoadResponse {
         var targetUrl = url
         if (url.contains("*")) {
-            val (link, _) = app.get(url.replace("*", "")).document.select("div.flex.flex-wrap.overflow-y-hidden > script").tryTofindLatestSeason()
-            targetUrl = link.toString()
+            val (link, _) = app.get(
+                url.replace(
+                    "*",
+                    ""
+                )
+            ).document.select("div.flex.flex-wrap > script")
+                .tryTofindLatestSeason()
+            targetUrl = url.replace("*", "/") + link.toString()
 
         }
         val subEpisodes = ArrayList<Episode>()
@@ -446,22 +466,21 @@ class AnimeSamaProvider : MainAPI() {
 
         val html = app.get(targetUrl)
         val document = html.document
-        val textLinkBack = document.select("p.soustitreaccueil.syntitreanime").attr("onclick")
-            ?: throw ErrorLoadingException()
-        val linkBack =
-            rgxGetLink.find(textLinkBack)!!.groupValues.get(0).replace("'", "").replace(",", "")
-        val htmlBack = app.get(linkBack)
-        val documentBack = htmlBack.document
-        val description = documentBack.select("div.carousel-caption > p")[0].text()
-        val poster = documentBack.select("img.d-block.w-100")[0].attr("src")
-        var title = document.select("p.soustitreaccueil.syntitreanime").text()
+       // val textLinkBack = document.select("p.soustitreaccueil.syntitreanime").attr("onclick")?: throw ErrorLoadingException()
+       // val linkBack = rgxGetLink.find(textLinkBack)!!.groupValues.get(0).replace("'", "").replace(",", "")
+       // val htmlBack = app.get(linkBack)
+        //val documentBack = htmlBack.document
+        val description = "" // documentBack.select("div.carousel-caption > p")[0].text()
+        val poster = document.select("img#imgOeuvre").attr("src")
+        var title = document.select("h3#titreOeuvre").text()
         var status = false
-        val urlSubDub = findlinkforSuborDub(htmlBack, targetUrl)
+        var urlSubDub = "" // findlinkforSuborDub(htmlBack, targetUrl)
         var htmlSubDub: NiceResponse? = null
-        if (urlSubDub != targetUrl) {
+        if (document.select("a#switchVF").text() !="") {
+            urlSubDub = targetUrl.replace("vostfr","vf")
             htmlSubDub = app.get(urlSubDub)
         }
-        if (title.lowercase().contains("vostfr")) {
+        if (targetUrl.lowercase().contains("vostfr")) {
 
             listOf("SUB", "DUB").apmap {
                 if (it == "SUB") {
@@ -498,7 +517,7 @@ class AnimeSamaProvider : MainAPI() {
             }
         }
 
-        val recommendations = documentBack.select("div.synsaisons > li")
+        /*val recommendations = documentBack.select("div.synsaisons > li")
         val allresultshome: MutableList<SearchResponse> = mutableListOf()
         recommendations.forEach { saga ->
             val link_on_click = saga.attr("onclick")
@@ -510,7 +529,7 @@ class AnimeSamaProvider : MainAPI() {
             ) {
                 allresultshome.add(saga.toSearchResponse_all_rec(poster, link))
             }
-        }
+        }*/
 
         return newAnimeLoadResponse(
             title,
@@ -519,7 +538,7 @@ class AnimeSamaProvider : MainAPI() {
         ) {
             posterUrl = poster
             this.plot = description
-            this.recommendations = allresultshome
+           // this.recommendations = allresultshome
             if (subEpisodes.isNotEmpty()) addEpisodes(DubStatus.Subbed, subEpisodes)
             if (dubEpisodes.isNotEmpty()) addEpisodes(DubStatus.Dubbed, dubEpisodes)
             this.comingSoon = status
@@ -564,6 +583,7 @@ class AnimeSamaProvider : MainAPI() {
         return true
     }
 
+    val allAnime = Regex("""panneauAnime\(\"(.*)\)\;""")
     private fun List<Element>.tryTofindLatestSeason(): Pair<String?, String?> {
         var link: String? = ""
         var i = 0
@@ -572,7 +592,7 @@ class AnimeSamaProvider : MainAPI() {
         var newSum = 0
         var newSumVost = 0
         var newSumMovie = 0
-        var sumMovie = 0
+        val sumMovie = 0
         var text: String
         var detect_anime_Vostfr: Boolean
         var detect_anime_fr: Boolean
@@ -581,50 +601,58 @@ class AnimeSamaProvider : MainAPI() {
         var dubStatus: String? = ""
         while (i < this.size) {
 
-            text = this[i].text()
-            val a = text.lowercase().contains("vostfr")
-            val b = text.lowercase().contains("film")
-            val c = text.lowercase().contains("oav")
-            detect_anime_Vostfr = a && !b && !c
-            detect_anime_fr = !a && !b && !c
-            if (detect_anime_Vostfr) {
-                isVostfr = true
+            allAnime.findAll(this[i].toString()).forEach {
+                text = it.groupValues[1]
+                val a = text.lowercase().contains("vostfr")
+                val b = text.lowercase().contains("film")
+                val c = text.lowercase().contains("oav")
+                val d = text.lowercase().contains("kai")
+                val e = text.lowercase().contains("\"url\"")
+                detect_anime_Vostfr = a && !b && !c && !d && !e
+                detect_anime_fr = !a && !b && !c && !d && !e
+                if (detect_anime_Vostfr) {
+                    isVostfr = true
 
-                findAllNumber.findAll(text).toList().apmap { number ->
-                    newSumVost += number.groupValues[1].toInt()
+                    findAllNumber.findAll(text).toList().apmap { number ->
+                        newSumVost += number.groupValues[1].toInt()
+
+                    }
+                    if (newSumVost >= sumVost) {
+                        sumVost = newSumVost
+                        //val link_on_click = this[i].attr("onclick") ?: throw ErrorLoadingException()
+                        link = text.split(",")[1].replace("\"", "").trim()
+                        dubStatus = "vostfr"
+                    }
+                } else if (!isVostfr && detect_anime_fr) {
+                    isFR = true
+                    findAllNumber.findAll(text).toList().apmap { number ->
+                        newSum += number.groupValues[1].toInt()
+                    }
+                    if (newSum >= sum) {
+                        sum = newSum
+                        //val link_on_click = this[i].attr("onclick") ?: throw ErrorLoadingException()
+                        link = text.split(",")[1].replace("\"", "")
+                            .trim()//regexGetlink.find(link_on_click)?.groupValues?.get(1)
+                        dubStatus = "fr"
+                    }
+                } else if (!isVostfr && !isFR ) {
+                    findAllNumber.findAll(text).toList().apmap { number ->
+                        newSumMovie += number.groupValues[1].toInt()
+                    }
+
+                    if (newSumMovie >= sumMovie) {
+                        sum = newSum
+                        //val link_on_click = this[i].attr("onclick") ?: throw ErrorLoadingException()
+                        link = text.split(",")[1].replace("\"", "").trim()//regexGetlink.find(link_on_click)?.groupValues?.get(1)
+                        dubStatus = "film"
+                    }
 
                 }
-                if (newSumVost >= sumVost) {
-                    sumVost = newSumVost
-                    val link_on_click = this[i].attr("onclick") ?: throw ErrorLoadingException()
-                    link = regexGetlink.find(link_on_click)?.groupValues?.get(1)
-                    dubStatus = "vostfr"
-                }
-            } else if (!isVostfr && detect_anime_fr) {
-                isFR = true
-                findAllNumber.findAll(text).toList().apmap { number ->
-                    newSum += number.groupValues[1].toInt()
-                }
-                if (newSum >= sum) {
-                    sum = newSum
-                    val link_on_click = this[i].attr("onclick") ?: throw ErrorLoadingException()
-                    link = regexGetlink.find(link_on_click)?.groupValues?.get(1)
-                    dubStatus = "fr"
-                }
-            } else if (!isVostfr && !isFR) {
-                findAllNumber.findAll(text).toList().apmap { number ->
-                    newSumMovie += number.groupValues[1].toInt()
-                }
-                if (newSumMovie >= sumMovie) {
-                    sumMovie = newSumMovie
-                    val link_on_click = this[i].attr("onclick") ?: throw ErrorLoadingException()
-                    link = regexGetlink.find(link_on_click)?.groupValues?.get(1)
-                    dubStatus = "film"
-                }
+                newSumMovie = 0
+                newSumVost = 0
+                newSum = 0
             }
-            newSumMovie = 0
-            newSumVost = 0
-            newSum = 0
+            
             i++
         }
 
@@ -633,40 +661,47 @@ class AnimeSamaProvider : MainAPI() {
 
     val findAllNumber = Regex("""([0-9]+)""")
     private fun Element.toSearchResponse(): SearchResponse? {
-            val posterUrl = select("a > img").attr("src")
-            val title = select("a >div>h1").text()
-            val global_link = select("a").attr("href")
-            if (global_link.contains("search.php")) {
-                return null
-            }
+        val posterUrl = select("a > img").attr("src")
+        val title = select("a >div>h1").text()
+        val global_link = select("a").attr("href")
+        if (global_link.contains("search.php")) {
+            return null
+        }
 
-            val tv_type = TvType.TvSeries
+        val tv_type = TvType.TvSeries
 
-            return newAnimeSearchResponse(
-                title,
-                "$global_link*",
-                tv_type,
-                false,
-            ) {
-                this.posterUrl = posterUrl
-            }
+        return newAnimeSearchResponse(
+            title,
+            "$global_link*",
+            tv_type,
+            false,
+        ) {
+            this.posterUrl = posterUrl
+        }
 
     }
 
-    private fun Element.toSearchResponseNewEp(): SearchResponse? {
-        val figcaption = select("a >figcaption > span").text()
-        val link = select("a").attr("href")
-        if (figcaption.lowercase().trim() != "scan" && !link.lowercase().contains("/scan/")) {
-            val posterUrl = select("a > img").attr("src")
-            //val type = figcaption.lowercase()
-            val scheduleTime = select("a >span.badgeHautDroite").text()
-            val title = select("a >figcaption").text().replace(figcaption, "")
+    val newEp = Regex("""cartePlanningAnime\(\"(.*)\)\;""")
+    private suspend fun MatchResult.toSearchResponseNewEp(): SearchResponse? {
+        val anime = this.groupValues[1]
+
+        val link = "catalogue/"+anime.split(',')[1].replace("\"", "").trim()
+        if (anime.split(',')[1].lowercase().trim() != "scan" && !link.lowercase()
+                .contains("/scan/")
+        ) {
+            val linked =fixUrl(link)
+            val html = app.get(linked)
+            val document = html.document
+            val posterUrl = document.select("img#imgOeuvre").attr("src")
+
+            val scheduleTime = anime.split(',')[3]
+            val title = anime.split(',')[0]
 
             if (link.contains("search.php")) {
                 return null
             }
 
-            val dubstatus = if (figcaption.lowercase().contains("vf")) {
+            val dubstatus = if (anime.split(',')[5].lowercase().contains("vf")) {
                 EnumSet.of(DubStatus.Dubbed)
             } else {
                 EnumSet.of(DubStatus.Subbed)
@@ -675,7 +710,7 @@ class AnimeSamaProvider : MainAPI() {
 
             return newAnimeSearchResponse(
                 "$scheduleTime \n $title",
-                link,
+                linked,
                 tv_type,
                 false,
             ) {
@@ -697,7 +732,7 @@ class AnimeSamaProvider : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        var categoryName = request.name
+        val categoryName = request.name
 
         val cssSelector: String
         val cssSelectorN: String
@@ -734,11 +769,13 @@ class AnimeSamaProvider : MainAPI() {
         if (page <= 1) {
             val document = app.get(url).document
             cssSelector = "div.scrollBarStyled"
-            cssSelectorN = "div#$idDay>div.scrollBarStyled > div"
+            cssSelectorN = "div#$idDay.fadeJours > div > script"
             home = when (!categoryName.isBlank()) {
                 categoryName.contains("NOUVEAUX") -> {
-                    document.select(cssSelectorN)
+                    newEp.findAll(document.select(cssSelectorN).toString()).toList()
                         .mapNotNull { article -> article.toSearchResponseNewEp() }
+
+
                 }
                 categoryName.contains("ajoutés") -> {
                     document.select(cssSelector)[8].select("div.shrink-0")
