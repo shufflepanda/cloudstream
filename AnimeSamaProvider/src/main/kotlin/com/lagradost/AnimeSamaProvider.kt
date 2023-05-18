@@ -101,13 +101,16 @@ class AnimeSamaProvider : MainAPI() {
         /* val figcaption = element.select(" div.media-body > div >a > h5").text()
          if (!figcaption.lowercase().trim().contains("scan")) {*/
         val posterUrl = element.select("a>img ").attr("src")
-        val link_to_anime = element.select("a").attr("href")
+        var link_to_anime = element.select("a").attr("href")
         val document = app.get(link_to_anime).document
         val all_anime = document.select("div.flex.flex-wrap > script")
         //all_anime.forEach { saga -> this.add(saga.toSearchResponseAll(posterUrl)) }
         allAnime.findAll(all_anime.toString()).forEach {
             val text = it.groupValues[1]
             if (!text.contains("nom\",")) {
+                if (link_to_anime.takeLast(0) != "/") {
+                    link_to_anime = link_to_anime + "/"
+                }
                 val link = link_to_anime + text.split(",")[1].replace("\"", "").trim()
 
                 this.add(newAnimeSearchResponse(
@@ -323,12 +326,14 @@ class AnimeSamaProvider : MainAPI() {
         /////////////////////////////////
 
         val all_title = document.select("select#selectEpisodes > option")
-        val isTitleEp = !all_title.isNullOrEmpty()
+        val isTitleEp = all_title.size != 0
 
         val idBeginLoop = 0
         val idEndLoop = 0
-        val allstartForLoop = regexCreateEp.findAll(html.text)
-        val allEndForLoop = regexgetLoopEnd.findAll(html.text)
+
+        val str = html.text
+        val allstartForLoop = regexCreateEp.findAll(str)
+        val allEndForLoop = regexgetLoopEnd.findAll(str)
 
         var idxEndForLoop: Int
         var nbrEndloop: Int // number of end for loop found
@@ -410,8 +415,11 @@ class AnimeSamaProvider : MainAPI() {
     }
 
     private val regexAllcontentEpisode = Regex("""\[[^\]]*]""")
-    private val regexCreateEp = Regex("""for[\s]+\(var[\s]+i[\s]+=[\s]+([0-9]+)[\s]*;""")
-    private val regexgetLoopEnd = Regex("""i[\s]*<=[\s]*([0-9]+)""")
+    private val regexCreateEp =
+        Regex("""creerListe\(([0-9]+)\,""") // Regex("""for[\s]+\(var[\s]+i[\s]+=[\s]+([0-9]+)[\s]*;""")
+    private val regexgetLoopEnd =
+        Regex("""creerListe\([0-9]+\,[\s]*([0-9]+)\)""") // Regex("""i[\s]*<=[\s]*([0-9]+)""")
+
     fun dropSlachChar(url: String): String {
         return if (url.takeLast(1) == "/") {
             url.dropLast(1)
@@ -480,8 +488,11 @@ class AnimeSamaProvider : MainAPI() {
         var status = false
         var urlSubDub = "" // findlinkforSuborDub(htmlBack, targetUrl)
         var htmlSubDub: NiceResponse? = null
-        if (document.select("a#switchVF").text() != "") {
-            urlSubDub = targetUrl.replace("vostfr", "vf")
+        if (targetUrl.contains("/vostfr")) {
+            urlSubDub = targetUrl.replace("/vostfr", "/vf")
+            htmlSubDub = app.get(urlSubDub)
+        } else if (targetUrl.contains("/vf")) {
+            urlSubDub = targetUrl.replace("/vf", "/vostfr")
             htmlSubDub = app.get(urlSubDub)
         }
         if (targetUrl.lowercase().contains("vostfr")) {
@@ -491,7 +502,7 @@ class AnimeSamaProvider : MainAPI() {
                     subEpisodes.getEpisodes(html, targetUrl)
                     if (subEpisodes.isEmpty()) status = true
                 }
-                if (it == "DUB" && htmlSubDub != null) {
+                if (it == "DUB" && htmlSubDub!!.document.select("h3#titreOeuvre").text() != "") {
                     dubEpisodes.getEpisodes(htmlSubDub, urlSubDub)
                     if (dubEpisodes.isNotEmpty()) {
                         title = title.replace("VOSTFR", "").replace("VF", "")
@@ -500,7 +511,7 @@ class AnimeSamaProvider : MainAPI() {
             }
         } else {
             listOf("SUB", "DUB").apmap {
-                if (it == "SUB" && htmlSubDub != null) {
+                if (it == "SUB" && htmlSubDub!!.document.select("h3#titreOeuvre").text() != "") {
                     subEpisodes.getEpisodes(htmlSubDub, urlSubDub)
                     if (subEpisodes.isNotEmpty()) {
                         title = title.replace("VOSTFR", "").replace("VF", "")
