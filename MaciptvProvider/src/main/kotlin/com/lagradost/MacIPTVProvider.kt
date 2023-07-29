@@ -13,9 +13,8 @@ import java.lang.Math.ceil
 
 class MacIPTVProvider : MainAPI() {
     private var defaulmacAdresse =
-        "mac=00:1A:79:aa:53:65"//"mac=00:1A:79:31:ed:e5"//"mac=00:1A:79:28:9C:Be"//"mac=00%3A1a%3A79%3Aae%3A2a%3A30"//
-    private val defaultmainUrl =
-        "http://ky-iptv.com:25461/portalstb"//"http://nas.bordo1453.be"//"http://infinitymedia.live:8880"//"http://ultra-box.club"//
+        "mac=00:1A:79:BB:F5:9B"//"mac=00:1A:79:31:ed:e5"//"mac=00:1A:79:28:9C:Be"//"mac=00%3A1a%3A79%3Aae%3A2a%3A30"//
+    private val defaultmainUrl = "http://myf-tv.com:8080"//"http://nas.bordo1453.be"//"http://infinitymedia.live:8880"//"http://ultra-box.club"//
     private var defaultname = "Test-Account MacIPTV"
     private var Basename = "MacIPTV \uD83D\uDCFA"
     override val hasQuickSearch = false
