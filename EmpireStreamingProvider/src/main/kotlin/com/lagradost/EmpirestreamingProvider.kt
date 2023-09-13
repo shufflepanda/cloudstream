@@ -25,24 +25,6 @@ class EmpirestreamingProvider : MainAPI() {
         setOf(TvType.Movie, TvType.TvSeries) // series, films
     private val interceptor = CloudflareKiller()
 
-    init {
-        runBlocking {
-            try {
-                app.get(mainUrl)
-            } catch (e: Exception) { // url changed
-                val data =
-                    tryParseJson<ArrayList<mediaData>>(app.get("https://raw.githubusercontent.com/Eddy976/cloudstream-extensions-eddy/ressources/fetchwebsite.json").text)!!
-                data.forEach {
-                    if (it.title.lowercase().contains("Empire")) {
-                        mainUrl = it.url
-                    }
-                }
-
-            }
-        }
-    }
-
-
     data class SearchJson(
 
         @JsonProperty("status") var status: Boolean? = null,
