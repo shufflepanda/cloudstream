@@ -1,4 +1,5 @@
 package com.lagradost
+
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.*
@@ -101,7 +102,7 @@ class AnimeSamaProvider : MainAPI() {
          if (!figcaption.lowercase().trim().contains("scan")) {*/
         val posterUrl = element.select("a>img ").attr("src")
         var link_to_anime = element.select("a").attr("href")
-        val document = app.get(link_to_anime).document
+        val document = avoidCloudflare(link_to_anime).document//app.get(link_to_anime).document
         val all_anime = document.select("div.flex.flex-wrap > script")
         //all_anime.forEach { saga -> this.add(saga.toSearchResponseAll(posterUrl)) }
         allAnime.findAll(all_anime.toString()).forEach {
@@ -191,7 +192,7 @@ class AnimeSamaProvider : MainAPI() {
 
 
                 link_poster = Regex("""([^=]*myvi[^\\]*\.[j]pg[n]*[^\\]*)""").find(
-                    app.get(openlink).text
+                    avoidCloudflare(openlink).text//app.get(openlink).text
                 )?.groupValues?.get(1).toString().replace("%2f", "/").replace("%3a", ":")
                     .replace("%3f", "?").replace("%3d", "=").replace("%26", "&")
 
@@ -315,7 +316,7 @@ class AnimeSamaProvider : MainAPI() {
         } else {
             "$url$scpritAllEpisode"
         }
-        val getScript = app.get(url_scriptEp)
+        val getScript = avoidCloudflare(url_scriptEp)//app.get(url_scriptEp)
         val text_script = getScript.text
         val resultsAllContent = regexAllcontentEpisode.findAll(text_script)
         //////////////////////////////////////
@@ -462,7 +463,7 @@ class AnimeSamaProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         var targetUrl = url
         if (url.contains("*")) {
-            val (link, _) = app.get(
+            val (link, _) = avoidCloudflare(
                 url.replace(
                     "*",
                     ""
@@ -475,11 +476,11 @@ class AnimeSamaProvider : MainAPI() {
         val subEpisodes = ArrayList<Episode>()
         val dubEpisodes = ArrayList<Episode>()
         val cata = regexCatalogue.find(targetUrl)!!.groupValues[0]
-        val html = app.get(targetUrl)
+        val html = avoidCloudflare(targetUrl)//app.get(targetUrl)
         val document = html.document
 
         val linkBack = mainUrl + cata
-        val htmlBack = app.get(linkBack)
+        val htmlBack = avoidCloudflare(linkBack)//app.get(linkBack)
         val documentBack = htmlBack.document
         val description = documentBack.select("p.text-sm")[0].text()
         val poster = document.select("img#imgOeuvre").attr("src")
@@ -489,10 +490,10 @@ class AnimeSamaProvider : MainAPI() {
         var htmlSubDub: NiceResponse? = null
         if (targetUrl.contains("/vostfr")) {
             urlSubDub = targetUrl.replace("/vostfr", "/vf")
-            htmlSubDub = app.get(urlSubDub)
+            htmlSubDub = avoidCloudflare(urlSubDub)//app.get(urlSubDub)
         } else if (targetUrl.contains("/vf")) {
             urlSubDub = targetUrl.replace("/vf", "/vostfr")
-            htmlSubDub = app.get(urlSubDub)
+            htmlSubDub = avoidCloudflare(urlSubDub)//app.get(urlSubDub)
         }
         if (targetUrl.lowercase().contains("vostfr")) {
 
@@ -712,7 +713,7 @@ class AnimeSamaProvider : MainAPI() {
                 .contains("/scan/")
         ) {
             val linked = fixUrl(link)
-            val html = app.get(linked)
+            val html = avoidCloudflare(linked)//app.get(linked)
             val document = html.document
             val posterUrl = document.select("img#imgOeuvre").attr("src")
 
