@@ -12,6 +12,7 @@ class NekosamaPlugin: Plugin() {
         registerMainAPI(NekosamaProvider())
         registerExtractorAPI(PstreamExtractor())
         registerExtractorAPI(FusevideoExtractor())
+	registerExtractorAPI(FusevideoExtractor2())
 		
     }
 }
