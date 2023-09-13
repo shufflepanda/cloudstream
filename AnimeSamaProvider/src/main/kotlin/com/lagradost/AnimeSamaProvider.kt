@@ -1,8 +1,6 @@
 package com.lagradost
-
-
-
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.nicehttp.NiceResponse
 import org.jsoup.nodes.Element
@@ -19,6 +17,7 @@ class AnimeSamaProvider : MainAPI() {
     override var lang = "fr" // fournisseur est en francais
     override val supportedTypes =
         setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA) // animes, animesfilms
+    private val interceptor = CloudflareKiller()
 
     /**
     Cherche le site pour un titre spécifique
@@ -747,6 +746,13 @@ class AnimeSamaProvider : MainAPI() {
 
     }
 
+    suspend fun avoidCloudflare(url: String): NiceResponse {
+        if (!app.get(url).isSuccessful) {
+            return app.get(url, interceptor = interceptor)
+        } else {
+            return app.get(url)
+        }
+    }
     override val mainPage = mainPageOf(
         Pair(mainUrl, "NOUVEAUX"),
         Pair(mainUrl, "A ne pas rater"),
@@ -790,7 +796,7 @@ class AnimeSamaProvider : MainAPI() {
         var home: List<SearchResponse> = mutableListOf()
 
         if (page <= 1) {
-            val document = app.get(url).document
+            val document = avoidCloudflare(url).document //app.get(url).document
             cssSelector = "div.scrollBarStyled"
             cssSelectorN = "div#$idDay.fadeJours > div > script"
             home = when (!categoryName.isBlank()) {
