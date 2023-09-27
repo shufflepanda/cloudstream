@@ -748,7 +748,7 @@ class AnimeSamaProvider : MainAPI() {
     }
 
     suspend fun avoidCloudflare(url: String): NiceResponse {
-        if(1) {return app.get(url)
+        if(1==1) {return app.get(url)
             //return app.get(url, interceptor = interceptor)
         } else {
             return app.get(url)
