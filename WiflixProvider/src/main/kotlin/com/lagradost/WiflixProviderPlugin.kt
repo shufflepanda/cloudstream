@@ -12,7 +12,9 @@ class WiflixPlugin: Plugin() {
         registerMainAPI(WiflixProvider())
 		registerExtractorAPI(DoodStreamExtractor())
 		registerExtractorAPI(StreamSBPlusExtractor())
-		
-		
+		registerExtractorAPI(DoodsProExtractor())
+		registerExtractorAPI(VudeoExtractor2())
+		registerExtractorAPI(Uqload3())
+		registerExtractorAPI(StreamTapeTO())
     }
 }
