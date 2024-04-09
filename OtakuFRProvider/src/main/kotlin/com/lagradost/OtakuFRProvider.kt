@@ -7,7 +7,7 @@ import org.jsoup.nodes.Element
 import java.util.*
 
 class OtakuFRProvider : MainAPI() {
-    override var mainUrl = "https://otakufr.co/"
+    override var mainUrl = "https://otakufr.cc/"
     override var name = "OtakuFR"
     override val hasQuickSearch = false // recherche rapide (optionel, pas vraimet utile)
     override val hasMainPage = true // page d'accueil (optionel mais encoragé)
