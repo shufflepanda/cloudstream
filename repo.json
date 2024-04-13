@@ -3,6 +3,6 @@
     "description": "Eddy's French Repository",
     "manifestVersion": 1,
     "pluginLists": [
-        "https://raw.githubusercontent.com/shufflepanda/patsa_tele/master/plugins.json"
+        "https://raw.githubusercontent.com/shufflepanda/cloudstream/master/plugins.json"
     ]
 }
